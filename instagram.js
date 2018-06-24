@@ -29,17 +29,17 @@ exports.startInstagramChecking = function ()
 
 function checkInstagram ()
 {
-	request(instagramUrl + exports.instagramName, function (error, response, body)
+	getDataFromUrl(instagramUrl + exports.instagramName, function (data)
 		{
-			if (error)
-			{
-				console.log(error);
+			if ((data == undefined) || (data.length == 0))
 				return;
+
+			let container = {
+				postsToSend: [], //Array to hold prepared posts so we can send them in the correct order after going through all new Instagram posts.
+				workers: 1, //Numbers of workers working at the post gathering.
+				finished: 0, //Number of finished workers.
+				lastInstagramPost: data[0].node.shortcode
 			}
-
-			let data = getDataFromHtml(body);
-
-			let postsToSend = []; //Array to hold prepared posts so we can send them in the correct order after going through all new Instagram posts.
 
 			for (i = 0; i < data.length; i++)
 			{
@@ -49,22 +49,37 @@ function checkInstagram ()
 					break;
 
 				let link = instagramPostUrl + node.shortcode;
-				let text = '@everyone' + "\r\n\r\n" + node.edge_media_to_caption.edges[0].node.text + "\r\n\r\n" + link;
+				let text = '@everyone' + "\r\n\r\n" + node.edge_media_to_caption.edges[0].node.text + "\r\n\r\n";
 
-				postsToSend.push(text);
+				let isStory = false;
+
+				if (node.__typename == 'GraphSidecar')
+				{
+					text += '<' + link + '>' + "\r\n"; //Prevent preview of main link in Instagram stories because of the following direct media links.
+					isStory = true;
+				}
+				else
+					text += link;
+
+				container.postsToSend.push(text);
+
+				if (isStory)
+					startWorker(link, container, i);
 			}
 
-			//Send all posts, backwards through postsToSend for the correct order from old to new:
-			for (i = postsToSend.length - 1; i >= 0; i--)
-				exports.client.channels.get(exports.channelId).send(postsToSend[i]).catch(() => {});
+			workerFinished(container);
+		}
+	);
+}
 
-			//When there was a new post, store the newest post ID on the harddrive:
-			if (postsToSend.length > 0)
-			{
-				lastInstagramPost = data[0].node.shortcode;
+function getDataFromUrl (url, callback)
+{
+	request(url, function (error, response, body)
+		{
+			if (error)
+				console.log(error);
 
-				fs.writeFile(lastInstagramPostFileName, lastInstagramPost, () => {});
-			}
+			callback(getDataFromHtml(body));
 		}
 	);
 }
@@ -89,7 +104,46 @@ function getDataFromHtml (body)
 
 	data = data.substr(0, lastPositionAfterBracket + 1);
 	data = JSON.parse(data);
-	data = data.entry_data.ProfilePage[0].graphql.user.edge_owner_to_timeline_media.edges;
+	data = data.entry_data;
+
+	if (data.ProfilePage != undefined)
+		data = data.ProfilePage[0].graphql.user.edge_owner_to_timeline_media.edges; //Index page
+	else
+		data = data.PostPage[0].graphql.shortcode_media.edge_sidecar_to_children.edges; //Story page
 
 	return data;
+}
+
+function startWorker (link, container, index)
+{
+	container.workers++;
+
+	getDataFromUrl(link, function (data)
+		{
+			for (i = 0; i < data.length; i++)
+				container.postsToSend[index] += "\r\n" + data[i].node.display_url;
+
+			workerFinished(container);
+		}
+	);
+}
+
+function workerFinished (container)
+{
+	container.finished++;
+
+	if (container.workers == container.finished)
+	{
+		//Send all posts, backwards through postsToSend for the correct order from old to new:
+		for (i = container.postsToSend.length - 1; i >= 7; i--)
+			exports.client.channels.get(exports.channelId).send(container.postsToSend[i]).catch(() => {});
+
+		//When there was a new post, store the newest post ID on the harddrive:
+		if (container.postsToSend.length > 0)
+		{
+			lastInstagramPost = container.lastInstagramPost;
+
+			fs.writeFile(lastInstagramPostFileName, lastInstagramPost, () => {});
+		}
+	}
 }

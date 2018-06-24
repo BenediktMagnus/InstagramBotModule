@@ -121,7 +121,14 @@ function startWorker (link, container, index)
 	getDataFromUrl(link, function (data)
 		{
 			for (i = 0; i < data.length; i++)
-				container.postsToSend[index] += "\r\n" + data[i].node.display_url;
+			{
+				container.postsToSend[index] += "\r\n";
+
+				if (data[i].node.is_video)
+					container.postsToSend[index] += data[i].node.video_url;
+				else
+					container.postsToSend[index] += data[i].node.display_url;
+			}
 
 			workerFinished(container);
 		}
@@ -135,7 +142,7 @@ function workerFinished (container)
 	if (container.workers == container.finished)
 	{
 		//Send all posts, backwards through postsToSend for the correct order from old to new:
-		for (i = container.postsToSend.length - 1; i >= 7; i--)
+		for (i = container.postsToSend.length - 1; i >= 0; i--)
 			exports.client.channels.get(exports.channelId).send(container.postsToSend[i]).catch(() => {});
 
 		//When there was a new post, store the newest post ID on the harddrive:

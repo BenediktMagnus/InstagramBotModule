@@ -1,15 +1,21 @@
-const lastInstagramPostFileName = 'lastInstagramPost.txt';
+const lastInstagramPostFileName = 'instagramSave.json';
 const instagramUrl = 'https://www.instagram.com/';
 const instagramPostUrl = 'https://www.instagram.com/p/';
 
 const fs = require('fs');
 const request = require('request');
+const browser = new (require('zombie'))();
 
-var lastInstagramPost = '';
+var save = {
+	lastInstagramPost: '',
+	lastInstagramStory: ''
+}
 
 exports.instagramName = ''; //The name of the user on Instagram.
+exports.instagramId = ''; //The ID of the user on Instagram.
 exports.channelId = ''; //The Discord channel ID.
 exports.client = null; //A client created with 'new Discord.Client()' from the Discord.js library.
+exports.instagramSessionCookie = {}; //A session cookie to log into Instagram.
 exports.checkInterval = 300000; //The interval for checking Instagram in milliseconds.
 
 /**
@@ -19,7 +25,10 @@ exports.startInstagramChecking = function ()
 {
 	fs.readFile(lastInstagramPostFileName, function (err, data)
 		{
-			lastInstagramPost = data;
+			save = JSON.parse(data);
+			save.save = function () { fs.writeFile(lastInstagramPostFileName, JSON.stringify(this), () => {}); };
+
+			browser.setCookie({ name: 'sessionid', domain: 'instagram.com', value: exports.instagramSessionCookie });
 			
 			setInterval(checkInstagram, exports.checkInterval); //Check every five minutes.
 			checkInstagram();
@@ -28,6 +37,12 @@ exports.startInstagramChecking = function ()
 }
 
 function checkInstagram ()
+{
+	getPosts();
+	getStories();
+}
+
+function getPosts ()
 {
 	getDataFromUrl(instagramUrl + exports.instagramName, function (data)
 		{
@@ -45,29 +60,75 @@ function checkInstagram ()
 			{
 				let node = data[i].node;
 
-				if (node.shortcode == lastInstagramPost)
+				if (node.shortcode == save.lastInstagramPost)
 					break;
 
 				let link = instagramPostUrl + node.shortcode;
 				let text = '@everyone' + "\r\n\r\n" + node.edge_media_to_caption.edges[0].node.text + "\r\n\r\n";
 
-				let isStory = false;
+				let isGalery = false;
 
 				if (node.__typename == 'GraphSidecar')
 				{
 					text += '<' + link + '>' + "\r\n"; //Prevent preview of main link in Instagram stories because of the following direct media links.
-					isStory = true;
+					isGalery = true;
 				}
 				else
 					text += link;
 
 				container.postsToSend.push(text);
 
-				if (isStory)
+				if (isGalery)
 					startWorker(link, container, i);
 			}
 
 			workerFinished(container);
+		}
+	);
+}
+
+function getStories ()
+{
+	browser.visit('https://www.instagram.com/graphql/query/?query_hash=45246d3fe16ccc6577e0bd297a5db1ab&variables={"reel_ids":["' + exports.instagramId + '"],"precomposed_overlay":false}', function()
+		{
+			let data = browser.text();
+
+			if (data == '')
+				return;
+
+			data = JSON.parse(data).data;
+
+			if (data.reels_media.length == 0)
+				return;
+
+			data = data.reels_media[0].items;
+
+			let postsToSend = [];
+
+			for (i = data.length - 1; i >= 0; i--)
+			{
+				if (data[i].id == save.lastInstagramStory)
+					break;
+
+				//Go through all videos listet to find the main one, having the highest/native resolution:
+				let videos = data[i].video_resources;
+				for (j = 0; j < videos.length; j++)
+					if (videos[j].profile == 'MAIN')
+					{
+						postsToSend.push(videos[j].src);
+						break;
+					}
+			}
+
+			//Send all stories, backwards through postsToSend for the correct order from old to new:
+			for (i = postsToSend.length - 1; i >= 0; i--)
+				exports.client.channels.get(exports.channelId).send(postsToSend[i]).catch(() => {});
+
+			if (postsToSend.length > 0)
+			{
+				save.lastInstagramStory = data[data.length - 1].id;
+				save.save();
+			}
 		}
 	);
 }
@@ -109,7 +170,7 @@ function getDataFromHtml (body)
 	if (data.ProfilePage != undefined)
 		data = data.ProfilePage[0].graphql.user.edge_owner_to_timeline_media.edges; //Index page
 	else
-		data = data.PostPage[0].graphql.shortcode_media.edge_sidecar_to_children.edges; //Story page
+		data = data.PostPage[0].graphql.shortcode_media.edge_sidecar_to_children.edges; //Galery page
 
 	return data;
 }
@@ -148,9 +209,9 @@ function workerFinished (container)
 		//When there was a new post, store the newest post ID on the harddrive:
 		if (container.postsToSend.length > 0)
 		{
-			lastInstagramPost = container.lastInstagramPost;
+			save.lastInstagramPost = container.lastInstagramPost;
 
-			fs.writeFile(lastInstagramPostFileName, lastInstagramPost, () => {});
+			save.save();
 		}
 	}
 }

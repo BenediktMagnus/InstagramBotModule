@@ -17,6 +17,8 @@ exports.channelId = ''; //The Discord channel ID.
 exports.client = null; //A client created with 'new Discord.Client()' from the Discord.js library.
 exports.instagramSessionCookie = {}; //A session cookie to log into Instagram.
 exports.checkInterval = 300000; //The interval for checking Instagram in milliseconds.
+exports.formatString = ''; //The format string to display the date and time of a post/story.
+exports.locale = 'en'; //The locale to display date and time information.
 
 /**
  * Starts checking an Instagram account for new posts and send them to the Discord.
@@ -64,7 +66,10 @@ function getPosts ()
 					break;
 
 				let link = instagramPostUrl + node.shortcode;
-				let text = '@everyone' + "\r\n\r\n" + node.edge_media_to_caption.edges[0].node.text + "\r\n\r\n";
+
+				let text = '@everyone' + "\r\n\r\n" +
+						   getDateTimeFromUnix(node.taken_at_timestamp) + ':' + "\r\n" +
+						   node.edge_media_to_caption.edges[0].node.text + "\r\n\r\n";
 
 				let isGalery = false;
 
@@ -110,6 +115,8 @@ function getStories ()
 				if (data[i].id == save.lastInstagramStory)
 					break;
 
+				let text = getDateTimeFromUnix(data[i].taken_at_timestamp) + ':' + "\r\n";
+
 				if (data[i].is_video)
 				{
 					//Go through all videos listet to find the main one, having the highest/native resolution:
@@ -117,12 +124,14 @@ function getStories ()
 					for (j = 0; j < videos.length; j++)
 						if (videos[j].profile == 'MAIN')
 						{
-							postsToSend.push(videos[j].src);
+							text += videos[j].src;
 							break;
 						}
 				}
 				else
-					postsToSend.push(data[i].display_url);
+					text += data[i].display_url;
+
+				postsToSend.push(text);
 			}
 
 			//Send all stories, backwards through postsToSend for the correct order from old to new:
@@ -219,4 +228,16 @@ function workerFinished (container)
 			save.save();
 		}
 	}
+}
+
+function getDateTimeFromUnix (unixTimestamp)
+{
+	let dateTime = require('moment').unix(unixTimestamp);
+
+	dateTime.locale(exports.locale);
+
+	if (exports.formatString == '')
+		return dateTime.format();
+	else
+		return dateTime.format(exports.formatString);
 }

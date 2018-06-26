@@ -110,14 +110,19 @@ function getStories ()
 				if (data[i].id == save.lastInstagramStory)
 					break;
 
-				//Go through all videos listet to find the main one, having the highest/native resolution:
-				let videos = data[i].video_resources;
-				for (j = 0; j < videos.length; j++)
-					if (videos[j].profile == 'MAIN')
-					{
-						postsToSend.push(videos[j].src);
-						break;
-					}
+				if (data[i].is_video)
+				{
+					//Go through all videos listet to find the main one, having the highest/native resolution:
+					let videos = data[i].video_resources;
+					for (j = 0; j < videos.length; j++)
+						if (videos[j].profile == 'MAIN')
+						{
+							postsToSend.push(videos[j].src);
+							break;
+						}
+				}
+				else
+					postsToSend.push(data[i].display_url);
 			}
 
 			//Send all stories, backwards through postsToSend for the correct order from old to new:

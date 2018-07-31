@@ -19,6 +19,7 @@ exports.instagramSessionCookie = {}; //A session cookie to log into Instagram.
 exports.checkInterval = 300000; //The interval for checking Instagram in milliseconds.
 exports.formatString = ''; //The format string to display the date and time of a post/story.
 exports.locale = 'en'; //The locale to display date and time information.
+exports.attachMedia = true; //If true, the media files are attached to the message, otherwise links with preview are posted.
 
 /**
  * Starts checking an Instagram account for new posts and send them to the Discord.
@@ -53,6 +54,7 @@ function getPosts ()
 
 			let container = {
 				postsToSend: [], //Array to hold prepared posts so we can send them in the correct order after going through all new Instagram posts.
+				links: [], //Array for all media links.
 				workers: 1, //Numbers of workers working at the post gathering.
 				finished: 0, //Number of finished workers.
 				lastInstagramPost: data[0].node.shortcode
@@ -71,20 +73,14 @@ function getPosts ()
 						   getDateTimeFromUnix(node.taken_at_timestamp) + ':' + "\r\n" +
 						   node.edge_media_to_caption.edges[0].node.text + "\r\n\r\n";
 
-				let isGalery = false;
-
-				if (node.__typename == 'GraphSidecar')
-				{
-					text += '<' + link + '>' + "\r\n"; //Prevent preview of main link in Instagram stories because of the following direct media links.
-					isGalery = true;
-				}
-				else
-					text += link;
+				text += '<' + link + '>' + "\r\n"; //Prevent preview of main link in Instagram stories because of the following direct media links.
 
 				container.postsToSend.push(text);
 
-				if (isGalery)
-					startWorker(link, container, i);
+				if (exports.attachMedia)
+					container.links[i] = [];
+
+				startWorker(link, container, i);
 			}
 
 			workerFinished(container);
@@ -184,7 +180,14 @@ function getDataFromHtml (body)
 	if (data.ProfilePage != undefined)
 		data = data.ProfilePage[0].graphql.user.edge_owner_to_timeline_media.edges; //Index page
 	else
-		data = data.PostPage[0].graphql.shortcode_media.edge_sidecar_to_children.edges; //Galery page
+	{
+		data = data.PostPage[0].graphql.shortcode_media;
+		
+		if (data.edge_sidecar_to_children != undefined)
+			data = data.edge_sidecar_to_children.edges; //Galery page
+		else
+			data = [{node: data}]; //Single media file page.
+	}
 
 	return data;
 }
@@ -199,10 +202,17 @@ function startWorker (link, container, index)
 			{
 				container.postsToSend[index] += "\r\n";
 
+				let targetUrl = '';
+
 				if (data[i].node.is_video)
-					container.postsToSend[index] += data[i].node.video_url;
+					targetUrl = data[i].node.video_url;
 				else
-					container.postsToSend[index] += data[i].node.display_url;
+					targetUrl = data[i].node.display_url;
+
+				if (exports.attachMedia)
+					container.links[index].push(targetUrl); //The direct link will later be attached to the Discord message.
+				else
+					container.postsToSend[index] += targetUrl;
 			}
 
 			workerFinished(container);
@@ -218,7 +228,16 @@ function workerFinished (container)
 	{
 		//Send all posts, backwards through postsToSend for the correct order from old to new:
 		for (i = container.postsToSend.length - 1; i >= 0; i--)
-			exports.client.channels.get(exports.channelId).send(container.postsToSend[i]).catch(() => {});
+		{
+			let targetChannel = exports.client.channels.get(exports.channelId);
+
+			//console.log(container.links[i]);
+
+			if (exports.attachMedia)
+				targetChannel.send(container.postsToSend[i], { files: container.links[i] }).catch(() => {});
+			else
+				targetChannel.send(container.postsToSend[i]).catch(() => {});
+		}
 
 		//When there was a new post, store the newest post ID on the harddrive:
 		if (container.postsToSend.length > 0)

@@ -182,7 +182,7 @@ function getDataFromHtml (body)
 	else
 	{
 		data = data.PostPage[0].graphql.shortcode_media;
-		
+
 		if (data.edge_sidecar_to_children != undefined)
 			data = data.edge_sidecar_to_children.edges; //Galery page
 		else
@@ -209,6 +209,8 @@ function startWorker (link, container, index)
 				else
 					targetUrl = data[i].node.display_url;
 
+				targetUrl = getPathFromUrl(targetUrl);
+
 				if (exports.attachMedia)
 					container.links[index].push(targetUrl); //The direct link will later be attached to the Discord message.
 				else
@@ -230,8 +232,6 @@ function workerFinished (container)
 		for (i = container.postsToSend.length - 1; i >= 0; i--)
 		{
 			let targetChannel = exports.client.channels.get(exports.channelId);
-
-			//console.log(container.links[i]);
 
 			if (exports.attachMedia)
 				targetChannel.send(container.postsToSend[i], { files: container.links[i] }).catch(() => {});
@@ -259,4 +259,9 @@ function getDateTimeFromUnix (unixTimestamp)
 		return dateTime.format();
 	else
 		return dateTime.format(exports.formatString);
+}
+
+function getPathFromUrl(url)
+{
+	return url.split(/[?#]/)[0];
 }

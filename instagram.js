@@ -105,6 +105,7 @@ function getStories ()
 			data = data.reels_media[0].items;
 
 			let postsToSend = [];
+			let links = [];
 
 			for (i = data.length - 1; i >= 0; i--)
 			{
@@ -120,19 +121,35 @@ function getStories ()
 					for (j = 0; j < videos.length; j++)
 						if (videos[j].profile == 'MAIN')
 						{
-							text += videos[j].src;
+							if (exports.attachMedia)
+								links.push(getPathFromUrl(videos[j].src));
+							else
+								text += videos[j].src;
+
 							break;
 						}
 				}
 				else
-					text += data[i].display_url;
+				{
+					if (exports.attachMedia)
+						links.push(getPathFromUrl(data[i].display_url));
+					else
+						text += data[i].display_url;
+				}
 
 				postsToSend.push(text);
 			}
 
 			//Send all stories, backwards through postsToSend for the correct order from old to new:
 			for (i = postsToSend.length - 1; i >= 0; i--)
-				exports.client.channels.get(exports.channelId).send(postsToSend[i]).catch(() => {});
+			{
+				let targetChannel = exports.client.channels.get(exports.channelId);
+
+				if (exports.attachMedia)
+					targetChannel.send(postsToSend[i], { files: links }).catch(() => {});
+				else
+					targetChannel.send(postsToSend[i]).catch(() => {});
+			}
 
 			if (postsToSend.length > 0)
 			{

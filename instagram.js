@@ -146,9 +146,23 @@ function getStories ()
 				let targetChannel = exports.client.channels.get(exports.channelId);
 
 				if (exports.attachMedia)
-					targetChannel.send(postsToSend[i], { files: links }).catch(() => {});
+				{
+					targetChannel.send(postsToSend[i], { files: [files[i]] }).catch(
+						(error) =>
+						{
+							console.error(error);
+						}
+					);
+				}
 				else
-					targetChannel.send(postsToSend[i]).catch(() => {});
+				{
+					targetChannel.send(postsToSend[i]).catch(
+						(error) =>
+						{
+							console.error(error);
+						}
+					);
+				}
 			}
 
 			if (postsToSend.length > 0)
@@ -252,8 +266,22 @@ function workerFinished (container)
 
 			if (exports.attachMedia)
 				targetChannel.send(container.postsToSend[i], { files: container.links[i] }).catch(() => {});
+				targetChannel.send(container.postsToSend[i], { files: files }).catch(
+					(error) =>
+					{
+						console.error(error);
+					}
+				);
+			}
 			else
-				targetChannel.send(container.postsToSend[i]).catch(() => {});
+			{
+				targetChannel.send(container.postsToSend[i]).catch(
+					(error) =>
+					{
+						console.error(error);
+					}
+				);
+			}
 		}
 
 		//When there was a new post, store the newest post ID on the harddrive:

@@ -32,7 +32,7 @@ exports.startInstagramChecking = function ()
 			save.save = function () { fs.writeFile(lastInstagramPostFileName, JSON.stringify(this), () => {}); };
 
 			browser.setCookie({ name: 'sessionid', domain: 'instagram.com', value: exports.instagramSessionCookie });
-			
+
 			setInterval(checkInstagram, exports.checkInterval); //Check every five minutes.
 			checkInstagram();
 		}
@@ -105,7 +105,7 @@ function getStories ()
 			data = data.reels_media[0].items;
 
 			let postsToSend = [];
-			let links = [];
+			let files = [];
 
 			for (i = data.length - 1; i >= 0; i--)
 			{
@@ -122,7 +122,10 @@ function getStories ()
 						if (videos[j].profile == 'MAIN')
 						{
 							if (exports.attachMedia)
-								links.push(getPathFromUrl(videos[j].src));
+								files.push({
+									attachment: videos[j].src,
+									name: getPathFromUrl(videos[j].src),
+								});
 							else
 								text += videos[j].src;
 
@@ -132,7 +135,10 @@ function getStories ()
 				else
 				{
 					if (exports.attachMedia)
-						links.push(getPathFromUrl(data[i].display_url));
+						files.push({
+							attachment: data[i].display_url,
+							name: getPathFromUrl(data[i].display_url),
+						});
 					else
 						text += data[i].display_url;
 				}
@@ -140,8 +146,8 @@ function getStories ()
 				postsToSend.push(text);
 			}
 
-			//Send all stories, backwards through postsToSend for the correct order from old to new:
-			for (i = postsToSend.length - 1; i >= 0; i--)
+			//Send all stories
+			for (i = 0; i < postsToSend.length; i++)
 			{
 				let targetChannel = exports.client.channels.get(exports.channelId);
 
@@ -240,8 +246,6 @@ function startWorker (link, container, index)
 				else
 					targetUrl = data[i].node.display_url;
 
-				targetUrl = getPathFromUrl(targetUrl);
-
 				if (exports.attachMedia)
 					container.links[index].push(targetUrl); //The direct link will later be attached to the Discord message.
 				else
@@ -265,7 +269,15 @@ function workerFinished (container)
 			let targetChannel = exports.client.channels.get(exports.channelId);
 
 			if (exports.attachMedia)
-				targetChannel.send(container.postsToSend[i], { files: container.links[i] }).catch(() => {});
+			{
+				const files = [];
+				for (link of container.links[i])
+				{
+					files.push({
+						attachment: link,
+						name: getPathFromUrl(link),
+					});
+				}
 				targetChannel.send(container.postsToSend[i], { files: files }).catch(
 					(error) =>
 					{

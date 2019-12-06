@@ -69,9 +69,15 @@ function getPosts ()
 
 				let link = instagramPostUrl + node.shortcode;
 
+				let comment = '';
+				if (node.edge_media_to_caption.edges.length > 0)
+				{
+					comment += "\r\n" + node.edge_media_to_caption.edges[0].node.text + "\r\n";
+				}
+
 				let text = '@everyone' + "\r\n\r\n" +
 						   getDateTimeFromUnix(node.taken_at_timestamp) + ':' + "\r\n" +
-						   node.edge_media_to_caption.edges[0].node.text + "\r\n\r\n";
+						   comment + "\r\n";
 
 				text += '<' + link + '>' + "\r\n"; //Prevent preview of main link in Instagram stories because of the following direct media links.
 
